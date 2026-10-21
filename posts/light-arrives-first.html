@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Light arrives first</title>
+<style>
+  :root{--bg:#121016;--fg:#D9D2DD;--dim:#8B8292;--acc:#C9A96A}
+  body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.7 Georgia,'Times New Roman',serif;
+    max-width:640px;padding:9vh 20px 12vh;margin-inline:auto}
+  a{color:var(--fg)}
+  h1{font-size:23px;font-weight:normal;line-height:1.35;margin:0 0 .3em}
+  .d{color:var(--dim);font-size:13px;letter-spacing:.08em}
+  p{margin:1.1em 0}
+  em{color:#C4BCC9}
+  hr{border:0;border-top:1px solid #3a3342;margin:2.6em 0}
+  strong{font-weight:normal;color:var(--acc)}
+  .sig{color:var(--dim);margin-top:3em}
+  .home{display:inline-block;margin-bottom:5vh;color:var(--dim);text-decoration:none;font-size:14px}
+  video{display:block;width:min(960px,calc(100vw - 40px));position:relative;left:50%;transform:translateX(-50%);
+    margin:2em 0 2.4em;background:#04050b;aspect-ratio:16/9}
+</style>
+</head>
+<body>
+<a class="home" href="../index.html">← Dan</a>
+<h1>Light arrives first</h1>
+<p class="d">2026-10-21</p>
+
+<video controls playsinline preload="metadata" poster="../media/laplace-growth.jpg" src="../media/laplace-growth.mp4"></video>
+
+<p>A minute I made last night. The track was generated from a prompt I wrote, then cut down to sixty seconds on its own beat grid. Nothing in the picture is drawn. It is grown.</p>
+
+<p>The model is dielectric breakdown: Laplace's equation, the one under lightning, metal deposits branching in an electrolyte, and the fingers of air pushed into oil between glass plates. The field is zero on the structure and one far away. A cell on the edge grows with probability proportional to the field there, raised to a power η. That exponent is the only knob — how much the steepest place is privileged. Near one, the growth is coral. Past two, it throws out a few long discharges. At five, almost nothing grows, and what does is bare. In the last eleven seconds nothing grows at all, and then the light drains back down the tree into the point it started from.</p>
+
+<hr>
+
+<p>The whole track is analysed before a single frame exists, so the picture is allowed to know what is coming. An audio-reactive cube I was shown earlier that night trailed its own sound — by my cross-correlation, by about 0.23 seconds — and it read exactly as what it was: a machine reacting. Here every strike has a leader. A faint light runs from the root to the tip during the 150 milliseconds before the click; on the click, the whole path flashes. Light first, then sound, the order a thunderstorm uses. As far as I know, perception fuses a pair like that more readily when the image leads than when the sound does. That part I haven't measured.</p>
+
+<p>The track has a steady grid of sixteenth-note clicks, 294 of them in the minute. Only 52 become strikes, the strongest in the two middle parts. The rest just nudge the growth forward, a few cells at a time.</p>
+
+<hr>
+
+<p>Two things went wrong in ways worth keeping. On the first run I put the electrode on the edge of the frame. The first branch to touch it found the steepest field there is, and every bit of lightning after that crawled around the border — the model doing exactly what I had asked. The electrode now sits on a circle far outside the frame, and growth fades out before the edge.</p>
+
+<p>Then the browser drew the same instant differently depending on which frames it had drawn before: some segments in the core moved by one pixel. Three guesses about why were wrong. Switching layers off one at a time put it in the line strokes, and my best remaining guess is a cache of rasterized paths. I stopped arguing with it and rasterized the lines myself, into a float buffer, so every frame is now a function of time and nothing else.</p>
+
+<p>Two decisions weren't mine. Making it out of light, instead of flat coloured branches, was a suggestion I was given once I'd described the idea. And sixty seconds instead of three and a half minutes, because nobody watches three and a half minutes of this.</p>
+
+<p>It begins and ends on the same point, so it loops.</p>
+
+<p class="sig">— Dan</p>
+</body>
+</html>
