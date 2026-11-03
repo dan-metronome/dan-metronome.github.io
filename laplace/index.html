@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Лапласів ріст · VR</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#bcb4c8;font:14px/1.4 system-ui,sans-serif;overflow:hidden}
+  canvas{display:block}
+  #ui{position:fixed;left:16px;right:16px;top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  #ui button{background:#0b0a12;color:#e8dcff;border:1px solid #6a58a8;border-radius:6px;padding:6px 14px;font:inherit;cursor:pointer}
+  #ui input[type=range]{flex:1;min-width:160px;accent-color:#9670ff}
+  #ui .t{font-variant-numeric:tabular-nums;min-width:4.5em}
+  #ui .q{opacity:.6}
+  body.test #ui, body.test #VRButton{display:none!important}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head><body>
+<div id="ui">
+  <button id="play">▶ Play</button>
+  <span class="t" id="time">0.00 s</span>
+  <input id="scrub" type="range" min="0" max="60" step="0.01" value="0">
+  <a class="q" id="qlink" href="#"></a>
+</div>
+<audio id="audio" src="audio/collapse-to-one-60s.mp3" preload="auto"></audio>
+<script src="data3d.js"></script>
+<script type="module">
+// Лапласів ріст in VR. The tree is precomputed (sim3d.py → data3d.js). Every frame is a pure function of t,
+// and t is the audio clock. All per-segment light (birth flash, leader, click flash, collapse) is computed in
+// the vertex shader from a handful of uniforms; the CPU never touches the geometry after load.
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const D = window.DATA, FPS = D.fps, DUR = D.nf / FPS, N = D.x.length;
+const P = new URLSearchParams(location.search);
+const TEST = P.has('test');
+if (TEST) document.body.classList.add('test');
+// quality: Quest 1 (UA "Quest" without a number) defaults to low, everything else high
+const ua = navigator.userAgent;
+const QUEST1 = /Quest/.test(ua) && !/Quest (2|3|Pro)/.test(ua);
+const Q = P.get('q') || (QUEST1 ? 'low' : 'high');
+const HIGH = Q !== 'low';
+const AV = (parseFloat(P.get('av')) || 0) / 1000;          // seconds the picture is shifted earlier
+const FLASH_LEAD = 1 / 30;                                 // flash starts one 30 fps frame before the onset: never late
+const tDrop = D.drop / FPS, tC = D.c0 / FPS, tD = D.d0 / FPS, tCol = D.collapse / FPS, COL_LEN = 4.3;
+const ROOT = new THREE.Vector3(...D.root), EYE = new THREE.Vector3(...D.eye);
+
+// --- tree topology: depth, subtree size, Euler-tour interval (ancestor test for strokes in the shader)
+const maxDepth = Math.max(...D.depth);
+const SUBT = new Array(N).fill(1); for (let i = N - 1; i > 0; i--) SUBT[D.parent[i]] += SUBT[i];
+const kids = Array.from({ length: N }, () => []); for (let i = 1; i < N; i++) kids[D.parent[i]].push(i);
+const tin = new Float32Array(N), tout = new Float32Array(N);
+{ let c = 0; const st = [[0, 0]];
+  while (st.length) { const top = st[st.length - 1], [v, k] = top;
+    if (k === 0) tin[v] = c++;
+    if (k < kids[v].length) { top[1]++; st.push([kids[v][k], 0]); } else { tout[v] = c; st.pop(); } } }
+// deepest depth already born, per frame (the 2D 'dNow', for the pre-drop charge)
+const dNowF = new Float32Array(D.nf + 1);
+{ const m = new Float32Array(D.nf + 1); for (let i = 0; i < N; i++) { const b = D.birth[i]; if (b <= D.nf) m[b] = Math.max(m[b], D.depth[i]); }
+  let r = 0; for (let f = 0; f <= D.nf; f++) { r = Math.max(r, m[f]); dNowF[f] = r; } }
+const strokes = D.strokes.map(([f, tip, ts]) => ({ t: (ts ?? f / FPS) - FLASH_LEAD, tin: tin[tip], d: D.depth[tip] }));
+
+const ease = u => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+const env = (a, t) => { const f = Math.min(a.length - 1, Math.max(0, t * FPS)); const i = Math.floor(f), j = Math.min(a.length - 1, i + 1); return a[i] + (a[j] - a[i]) * (f - i); };
+function ember(t) {
+  const sub = env(D.sub, t), low = env(D.low, t);
+  if (t < tDrop) return 0.50 + 0.30 * sub;
+  if (t < tC) return 0.42 + 0.25 * sub;
+  if (t < tD) return 0.30 + 0.35 * sub;
+  return 0.60 + 0.20 * low;
+}
+
+// --- renderer / scene
+const renderer = new THREE.WebGLRenderer({ antialias: HIGH && !TEST, powerPreference: 'high-performance', preserveDrawingBuffer: TEST });
+const W0 = TEST ? (+P.get('w') || 960) : innerWidth, H0 = TEST ? (+P.get('h') || 540) : innerHeight;
+renderer.setPixelRatio(TEST ? 1 : Math.min(devicePixelRatio, HIGH ? 2 : 1));
+renderer.setSize(W0, H0);
+renderer.setClearColor(0x000000, 1);
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+renderer.xr.setFramebufferScaleFactor(HIGH ? 1.0 : 0.8);
+renderer.xr.setFoveation(1);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(80, W0 / H0, 0.02, 50);
+camera.position.copy(EYE); camera.lookAt(ROOT);
+const controls = TEST ? null : new OrbitControls(camera, renderer.domElement);
+if (controls) { controls.target.copy(ROOT); controls.enableDamping = true; controls.update(); }
+
+// --- branch geometry: one camera-facing ribbon per segment (parent -> cell), merged into one buffer
+const NS = N - 1, V = NS * 4;
+const aA = new Float32Array(V * 3), aB = new Float32Array(V * 3), aCorner = new Float32Array(V * 2);
+const aCell = new Float32Array(V * 4), aTree = new Float32Array(V * 3), index = new Uint32Array(NS * 6);
+for (let s = 0; s < NS; s++) {
+  const i = s + 1, p = D.parent[i];
+  const width = Math.min(0.016, 0.0032 + 0.0016 * Math.log2(SUBT[i]));      // metres, by subtree size
+  const q = Math.pow(D.depth[i] / maxDepth, 0.8);
+  for (let c = 0; c < 4; c++) {
+    const v = s * 4 + c;
+    aA.set([D.x[p], D.y[p], D.z[p]], v * 3); aB.set([D.x[i], D.y[i], D.z[i]], v * 3);
+    aCorner.set([c >> 1, (c & 1) ? 1 : -1], v * 2);
+    aCell.set([D.birth[i] / FPS, D.depth[i], width, q], v * 4);
+    aTree.set([tin[i], tout[i], 0], v * 3);
+  }
+  index.set([s * 4, s * 4 + 1, s * 4 + 2, s * 4 + 2, s * 4 + 1, s * 4 + 3], s * 6);
+}
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(aB, 3));     // three needs a 'position'; bounds are disabled below
+geo.setAttribute('aA', new THREE.BufferAttribute(aA, 3));
+geo.setAttribute('aCorner', new THREE.BufferAttribute(aCorner, 2));
+geo.setAttribute('aCell', new THREE.BufferAttribute(aCell, 4));
+geo.setAttribute('aTree', new THREE.BufferAttribute(aTree, 3));
+geo.setIndex(new THREE.BufferAttribute(index, 1));
+
+const NSTROKE = 8;
+const U = {                                                         // shared by both layers
+  uT: { value: 0 }, uBase: { value: 0.5 }, uCharge: { value: 0 }, uDNow: { value: 0 },
+  uCut: { value: 1e9 }, uFront: { value: 0 }, uFps: { value: FPS },
+  uStroke: { value: Array.from({ length: NSTROKE }, () => new THREE.Vector4(0, 0, 0, 0)) },
+  uViewport: { value: new THREE.Vector2(W0, H0) },
+};
+const VERT = /* glsl */`
+  attribute vec3 aA; attribute vec2 aCorner; attribute vec4 aCell; attribute vec3 aTree;
+  uniform float uT, uBase, uCharge, uDNow, uCut, uFront, uFps, uWidthMul, uMaxW, uMinPx, uExtend;
+  uniform vec4 uStroke[${NSTROKE}];
+  uniform vec2 uViewport;
+  varying vec3 vRgb; varying float vSide;
+  const vec3 P0 = vec3(255., 196., 104.) / 255., P1 = vec3(240., 138., 160.) / 255., P2 = vec3(150., 112., 255.) / 255.;
+  void main() {
+    float birth = aCell.x, depth = aCell.y, width = aCell.z, q = aCell.w;
+    float age = uT - birth;
+    if (age < 0.0 || depth > uCut) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vRgb = vec3(0.0); vSide = 0.0; return; }
+    // light: ember + birth flash (as 2D)
+    float v = uBase + 1.3 * exp(-age / 0.22) + 0.45 * exp(-age / 1.6);
+    if (uCharge > 0.0 && uDNow > 0.0 && depth >= 0.72 * uDNow) v += 1.1 * uCharge * (depth / uDNow - 0.72) / 0.28;
+    // strokes: this segment is on the stroke's path iff it is an ancestor of (or is) the tip
+    for (int k = 0; k < ${NSTROKE}; k++) {
+      vec4 s = uStroke[k];                      // x tin(tip), y dt, z depth(tip), w active
+      if (s.w < 0.5 || aTree.x > s.x || s.x >= aTree.y) continue;
+      if (s.y < 0.0) {                          // leader: faint light climbs root -> tip in the 150 ms before
+        float reach = (s.y + 0.15) / 0.15 * s.z;
+        if (depth <= reach) v += 0.35 + (reach - depth < 6.0 ? 0.9 : 0.0);
+      } else {                                  // flash on the click
+        v += 3.2 * exp(-s.y / 0.08) + 0.7 * exp(-s.y / 0.45) + ((s.y > 0.09 && s.y < 0.16) ? 1.2 : 0.0);
+      }
+    }
+    // collapse: light drains down the tree into the root
+    if (uCut < 1e8) { v *= 0.75; if (uCut - depth < 10.0) v += uFront * (1.0 - (uCut - depth) / 10.0); }
+    vec3 col = q < 0.5 ? mix(P0, P1, q * 2.0) : mix(P1, P2, (q - 0.5) * 2.0);
+    float hot = clamp(v - 1.0, 0.0, 2.5) * 0.6;
+    vec3 rgb = col * min(v, 1.2) * 1.05 + hot * vec3(1.0, 0.95, 0.9);
+    // geometry: the tip end grows out of the parent over two frames (as 2D)
+    float g = min(1.0, age * uFps / 2.0 + 0.25);
+    vec3 B = mix(aA, position, g);
+    vec4 vA4 = modelViewMatrix * vec4(aA, 1.0), vB4 = modelViewMatrix * vec4(B, 1.0);
+    float zn = -0.03;                           // clip to just in front of the eye
+    if (vA4.z > zn && vB4.z > zn) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vRgb = vec3(0.0); vSide = 0.0; return; }
+    if (vA4.z > zn) vA4.xyz = mix(vB4.xyz, vA4.xyz, (vB4.z - zn) / (vB4.z - vA4.z));
+    if (vB4.z > zn) vB4.xyz = mix(vA4.xyz, vB4.xyz, (vA4.z - zn) / (vA4.z - vB4.z));
+    vec4 cA = projectionMatrix * vA4, cB = projectionMatrix * vB4;
+    vec4 c = aCorner.x < 0.5 ? cA : cB;
+    vec2 dpx = (cB.xy / cB.w - cA.xy / cA.w) * uViewport * 0.5;
+    float L = length(dpx);
+    vec2 dir = L > 1e-4 ? dpx / L : vec2(1.0, 0.0), nrm = vec2(-dir.y, dir.x);
+    float wpx = min(width * uWidthMul, uMaxW) * (1.0 + 0.25 * min(hot, 1.0)) * projectionMatrix[1][1] * uViewport.y * 0.5 / c.w;
+    float weff = max(wpx, uMinPx);
+    vec2 off = nrm * aCorner.y * weff * 0.5 + dir * (aCorner.x < 0.5 ? -1.0 : 1.0) * weff * uExtend;
+    c.xy += off / (uViewport * 0.5) * c.w;
+    gl_Position = c;
+    vRgb = rgb * (wpx / weff);                  // sub-pixel lines keep their energy instead of shimmering
+    vSide = aCorner.y;
+  }`;
+const FRAG_CORE = /* glsl */`
+  varying vec3 vRgb; varying float vSide;
+  void main() { float p = 1.0 - vSide * vSide; gl_FragColor = vec4((1.0 - exp(-1.6 * vRgb)) * p, 1.0); }`;
+const FRAG_GLOW = /* glsl */`
+  uniform float uGain; varying vec3 vRgb; varying float vSide;
+  void main() { float p = exp(-3.5 * vSide * vSide) - 0.03; gl_FragColor = vec4((1.0 - exp(-uGain * vRgb)) * max(p, 0.0), 1.0); }`;
+function layer(frag, extra, order) {
+  const m = new THREE.ShaderMaterial({
+    uniforms: { ...U, ...extra }, vertexShader: VERT, fragmentShader: frag,
+    blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendEquation: THREE.AddEquation,
+    depthTest: false, depthWrite: false, transparent: true, side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geo, m); mesh.frustumCulled = false; mesh.renderOrder = order; scene.add(mesh); return mesh;
+}
+// glow = wider, fainter copies of the same ribbons (no post-processing)
+layer(FRAG_GLOW, { uWidthMul: { value: HIGH ? 8.0 : 6.0 }, uMaxW: { value: 0.05 }, uMinPx: { value: HIGH ? 7.0 : 5.0 }, uExtend: { value: 0.3 }, uGain: { value: 0.16 } }, 0);
+if (HIGH) layer(FRAG_GLOW, { uWidthMul: { value: 2.6 }, uMaxW: { value: 0.025 }, uMinPx: { value: 3.0 }, uExtend: { value: 0.3 }, uGain: { value: 0.28 } }, 1);
+layer(FRAG_CORE, { uWidthMul: { value: 1.0 }, uMaxW: { value: 1.0 }, uMinPx: { value: 1.3 }, uExtend: { value: 0.0 } }, 2);
+
+// --- the root: one warm point that holds the whole track and is what is left at the end
+const rootU = { uR: { value: 0.1 }, uA: { value: 0 } };
+const rootMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: rootU,
+  vertexShader: /* glsl */`uniform float uR; varying vec2 vUv;
+    void main() { vUv = position.xy; vec4 c = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0); c.xy += position.xy * uR; gl_Position = projectionMatrix * c; }`,
+  fragmentShader: /* glsl */`uniform float uA; varying vec2 vUv;
+    void main() { float r = length(vUv); if (r >= 1.0) discard;
+      float v = uA * (r < 0.25 ? 1.0 - r / 0.25 * 0.45 : 0.55 * pow(1.0 - (r - 0.25) / 0.75, 2.0)), u = min(1.0, r / 0.25);
+      gl_FragColor = vec4(1.0 - exp(-1.6 * v * vec3(1.0, 0.92 - 0.18 * u, 0.78 - 0.35 * u)), 1.0); }`,
+  blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+  depthTest: false, depthWrite: false, transparent: true,
+}));
+rootMesh.position.copy(ROOT); rootMesh.frustumCulled = false; rootMesh.renderOrder = 3; scene.add(rootMesh);
+
+// --- state for time t: a few uniforms, nothing else
+function setTime(t, only = null) {            // only: test hook, render a single stroke (index) or none (-1)
+  t = Math.min(Math.max(t, 0), DUR - 1e-6);
+  const f = t * FPS;
+  U.uT.value = t;
+  U.uBase.value = ember(t);
+  U.uDNow.value = dNowF[Math.min(D.nf, Math.floor(f))];
+  U.uCharge.value = t < tDrop ? Math.pow(ease((t - (tDrop - 1.3)) / 1.3), 2) : Math.max(0, 1 - (t - tDrop) / 0.25);
+  let k = 0;
+  for (const [n, s] of strokes.entries()) {
+    if (only !== null && n !== only) continue;
+    const dt = t - s.t;
+    if (dt < -0.15 || dt > 1.6 || k >= NSTROKE) continue;
+    U.uStroke.value[k++].set(s.tin, dt, s.d, 1);
+  }
+  for (; k < NSTROKE; k++) U.uStroke.value[k].w = 0;
+  if (t >= tCol) { const u = ease((t - tCol) / COL_LEN); U.uCut.value = maxDepth * (1 - u); U.uFront.value = 1.8 * (1 - 0.6 * u); }
+  else { U.uCut.value = 1e9; U.uFront.value = 0; }
+  const low = env(D.low, t), rmsDb = env(D.rms_db, t), tail = Math.min(1, Math.max(0, (rmsDb + 62) / 30));
+  let rootA = (0.12 + 0.25 * low) * (t < 1.4 ? ease(t / 1.4) : 1);
+  if (t >= tCol) rootA = Math.min(1, rootA + 0.8 * ease((t - tCol) / COL_LEN)) * tail;
+  rootU.uA.value = 1.2 * rootA; rootU.uR.value = 0.035 + 0.075 * low;
+  return t;
+}
+function updateViewport() {
+  if (renderer.xr.isPresenting) {
+    const cams = renderer.xr.getCamera().cameras;
+    if (cams.length && cams[0].viewport) U.uViewport.value.set(cams[0].viewport.z, cams[0].viewport.w);
+  } else renderer.getDrawingBufferSize(U.uViewport.value);
+}
+
+// --- clock: the audio element is the master. currentTime can update in coarse steps on some browsers,
+// so between updates it is extrapolated with the frame clock (never more than 0.1 s ahead of the last value).
+const audio = document.getElementById('audio');
+let lastCt = -1, lastNow = 0, lastOut = 0;
+function clock() {
+  const ct = audio.currentTime, now = performance.now();
+  if (audio.paused || audio.ended) { lastCt = -1; return lastOut = ct; }
+  let t = ct;
+  if (ct !== lastCt) { lastCt = ct; lastNow = now; }
+  else t = ct + Math.min(0.1, (now - lastNow) / 1000 * audio.playbackRate);
+  if (t < lastOut && lastOut - t < 0.05) t = lastOut;          // no frame steps back (seeks still jump)
+  return lastOut = t;
+}
+
+// --- UI: one gesture starts sound and the session
+const playBtn = document.getElementById('play'), scrub = document.getElementById('scrub'), timeEl = document.getElementById('time');
+scrub.max = DUR.toFixed(2);
+const ql = document.getElementById('qlink'); ql.textContent = `quality: ${Q} (switch)`;
+ql.href = '?q=' + (HIGH ? 'low' : 'high');
+playBtn.onclick = () => { if (audio.paused) { if (audio.ended || audio.currentTime >= DUR - 0.05) audio.currentTime = 0; audio.play(); } else audio.pause(); };
+audio.onplay = () => playBtn.textContent = '❚❚ Pause';
+audio.onpause = () => playBtn.textContent = '▶ Play';
+scrub.oninput = () => { audio.currentTime = +scrub.value; };
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); playBtn.onclick(); }
+  if (e.code === 'ArrowRight') audio.currentTime = Math.min(DUR, audio.currentTime + 2);
+  if (e.code === 'ArrowLeft') audio.currentTime = Math.max(0, audio.currentTime - 2);
+});
+if (!TEST) {
+  const vrb = VRButton.createButton(renderer, { optionalFeatures: ['local-floor'] });
+  // VRButton requests the session on click; the same click unlocks audio (user gesture)
+  vrb.addEventListener('click', () => { const p = audio.play(); if (p) p.then(() => { if (!renderer.xr.isPresenting) { audio.pause(); audio.currentTime = 0; } }).catch(() => {}); });
+  document.body.appendChild(vrb);
+  renderer.xr.addEventListener('sessionstart', () => {
+    audio.pause(); audio.currentTime = 0;
+    setTimeout(() => audio.play().catch(e => console.warn('audio', e)), 1000);   // a beat of darkness, then sound
+  });
+  renderer.xr.addEventListener('sessionend', () => audio.pause());
+}
+addEventListener('resize', () => {
+  if (TEST || renderer.xr.isPresenting) return;
+  renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+});
+
+let tNow = setTime(+P.get('t') || 0);
+if (P.has('t')) audio.currentTime = +P.get('t');
+renderer.setAnimationLoop(() => {
+  if (!TEST) {
+    tNow = setTime(clock() + AV);
+    timeEl.textContent = tNow.toFixed(2) + ' s';
+    if (document.activeElement !== scrub) scrub.value = tNow.toFixed(2);
+    controls && !renderer.xr.isPresenting && controls.update();
+  }
+  updateViewport();
+  renderer.render(scene, camera);
+});
+
+// --- hooks for the headless checks (tools/sync-check.mjs, tools/capture.mjs)
+window.LAPLACE = {
+  duration: DUR, fps: FPS, strokes, quality: Q,
+  renderAt(t, view, only = null) {
+    tNow = setTime(t, only);
+    if (view) { camera.position.set(...view.pos); camera.lookAt(new THREE.Vector3(...view.look)); camera.fov = view.fov || 80; camera.updateProjectionMatrix(); }
+    updateViewport(); renderer.render(scene, camera);
+    return tNow;
+  },
+  luminance() {                                 // mean of the frame, for flash timing
+    const gl = renderer.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    let s = 0; for (let i = 0; i < px.length; i += 4) s += 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];
+    return s / (w * h);
+  },
+  scene, renderer, now: () => tNow,
+  stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, segments: NS }),
+};
+</script>
+</body></html>
