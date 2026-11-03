@@ -1,0 +1,27 @@
+/* receivedink.com — paper and ink. Shared by the index and every post.
+   Posts keep their own <style> for layout; this file comes after it and repaints:
+   the old tokens (--bg --fg --dim --acc) are redefined, and the few hard-coded dark colours are overridden. */
+:root{
+  --paper:#F4ECDE; --ink:#1A1715; --dim:#7A7068; --rule:#D8CCB8; --thread:#3E8FA6;
+  --bg:var(--paper); --fg:var(--ink); --acc:var(--thread);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#161413; --ink:#E9E1D3; --dim:#91877C; --rule:#3A332D; --thread:#6FB7CB; color-scheme:dark}}
+:root[data-theme="dark"]{--paper:#161413; --ink:#E9E1D3; --dim:#91877C; --rule:#3A332D; --thread:#6FB7CB; color-scheme:dark}
+
+body{background-color:var(--paper)!important; color:var(--ink)!important;
+  font-family:'Old Standard TT',Georgia,'Times New Roman',serif!important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .4 0 0 0 0 .33 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+a{color:var(--ink)}
+em{color:inherit!important}
+strong{color:var(--thread)!important}
+hr{border-top:1px solid var(--rule)!important}
+.d,.sig,.home,.sub{color:var(--dim)!important}
+.home{letter-spacing:.06em}
+video{background:var(--ink)!important}
+blockquote{border-left-color:var(--thread)!important;color:inherit!important}
+.lyrics{color:inherit!important}
+h1{font-weight:400}
+img{max-width:100%}
+::selection{background:var(--thread);color:var(--paper)}
