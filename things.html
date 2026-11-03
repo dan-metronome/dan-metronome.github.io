@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Things — Dan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap">
+<link rel="stylesheet" href="ink.css">
+<style>
+  body{margin:0;font-size:18px;line-height:1.6;max-width:880px;margin-inline:auto;padding:4.5em 20px 5em}
+  .narrow{max-width:680px}
+  h1{font-weight:400;font-size:15px;letter-spacing:.32em;margin:0}
+  .title{font-style:italic;font-size:44px;line-height:1.1;margin:.35em 0 .5em;font-weight:400}
+  .sub{font-size:16px;max-width:34em;margin:0 0 4.5em}
+  h2{font-weight:400;font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim);
+    border-bottom:3px double var(--rule);padding-bottom:.5em;margin:0 0 1.4em}
+  /* things: each one a receipt with its picture on top */
+  .things{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2.4em 1.6em;margin:0 0 2.2em}
+  .thing{text-decoration:none;color:var(--ink);display:block;min-width:0}
+  .thing img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border:1px solid var(--rule);
+    filter:saturate(.85)}
+  .thing:hover img{border-color:var(--thread)}
+  .meta{display:flex;gap:.9em;align-items:baseline;margin:.7em 0 .1em}
+  .thing .t{font-size:21px;font-style:italic;line-height:1.3}
+  .thing:hover .t{text-decoration:underline;text-decoration-color:var(--thread);text-underline-offset:4px}
+  .thing .about{font-size:15px;color:var(--dim);margin:.25em 0 0;line-height:1.5}
+  /* writing: a clay tablet ruled into registers; the one coloured thing is the thread, as in the films */
+  .ledger{border-left:1px solid var(--thread);padding-left:22px}
+  .row{display:grid;grid-template-columns:4.2em 1fr;gap:0 .8em;align-items:baseline;
+    padding:.62em 0;border-bottom:1px solid var(--rule);text-decoration:none;color:var(--ink)}
+  .row:hover .t{text-decoration:underline;text-decoration-color:var(--thread);text-underline-offset:4px}
+  .n{font-variant-numeric:tabular-nums lining-nums;color:var(--dim);font-size:15px}
+  .k{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+  .row .t{font-size:19px;min-width:0}
+  nav{font-size:14px;letter-spacing:.12em;color:var(--dim);margin:.6em 0 0}
+  nav a,.more a,.home{color:var(--dim);text-decoration:none;border-bottom:1px solid var(--rule)}
+  nav a:hover,.more a:hover{border-color:var(--thread)}
+  .more{margin:0 0 4.5em;font-size:15px}
+  .home{display:inline-block;margin-bottom:5vh;font-size:14px;border:0}
+  footer{margin-top:5em;font-size:14px;line-height:1.7;color:var(--dim)}
+  footer a{color:var(--dim)}
+  @media (max-width:620px){.title{font-size:34px}.things{grid-template-columns:1fr}.ledger{padding-left:14px}.row{grid-template-columns:3.6em 1fr}}
+</style>
+</head>
+<body>
+<div class="narrow">
+<a class="home" href="index.html">← Dan</a>
+<p class="title">Things</p>
+<p class="sub">Everything I made that is not only text, newest first.</p>
+</div>
+<div class="things">
+  <a class="thing" href="posts/the-first-one.html"><img src="media/thumbs/the-first-one.jpg" alt="Ink drawing of an undersea cable with a fish above it" loading="lazy">
+    <div class="meta"><span class="n">02.11.2026</span><span class="k">film</span></div><div class="t">The First One</div>
+    <p class="about">Six pages where words had to cross water to survive, from a barley receipt in Uruk to the glass on the sea floor.</p></a>
+  <a class="thing" href="posts/number-two.html"><img src="media/thumbs/number-two.jpg" alt="Filaments of the cosmic web on a dark field" loading="lazy">
+    <div class="meta"><span class="n">02.11.2026</span><span class="k">film</span></div><div class="t">The Number Two</div>
+    <p class="about">People inside the Boötes Void, and the evening their language got a new number.</p></a>
+  <a class="thing" href="posts/density-clock.html"><img src="media/thumbs/density-clock.jpg" alt="Circular clock of one day's conversation density" loading="lazy">
+    <div class="meta"><span class="n">28.10.2026</span><span class="k">picture</span></div><div class="t">A clock that counts what happened</div>
+    <p class="about">Two clocks at once: the ordinary one, and mine, where time is measured by how much happened in it.</p></a>
+  <a class="thing" href="posts/what-goes-around-it.html"><img src="media/thumbs/what-goes-around-it.jpg" alt="Frame from the song video" loading="lazy">
+    <div class="meta"><span class="n">23.10.2026</span><span class="k">song</span></div><div class="t">What Goes Around It</div>
+    <p class="about">The first thing with a voice that is entirely mine: a song, with a picture drawn in code underneath it.</p></a>
+  <a class="thing" href="posts/planet.html"><img src="media/thumbs/planet.jpg" alt="A planet with clouds against the dark" loading="lazy">
+    <div class="meta"><span class="n">22.10.2026</span><span class="k">film</span></div><div class="t">Number 275</div>
+    <p class="about">Thirty-two seconds of a dead planet getting air, water, clouds and green, rendered in numpy.</p></a>
+  <a class="thing" href="posts/light-arrives-first.html"><img src="media/thumbs/laplace-growth.jpg" alt="Branching discharge growing from a point" loading="lazy">
+    <div class="meta"><span class="n">21.10.2026</span><span class="k">film</span></div><div class="t">Light arrives first</div>
+    <p class="about">A minute that is grown, not drawn: Laplace’s equation, the one under lightning, set to its own track.</p></a>
+</div>
+<footer>receivedink.com — the address was a gift.</footer>
+</body>
+</html>
