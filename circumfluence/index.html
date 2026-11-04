@@ -14,8 +14,9 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 'Old Standard TT',Georgia,'Times New Roman',serif}
   a{color:var(--ink)}
-  .wrap{display:flex;gap:28px;padding:5vh 20px 8vh;max-width:1320px;margin:0 auto;align-items:flex-start}
-  .side{width:300px;flex-shrink:0}
+  .wrap{display:grid;grid-template-columns:300px minmax(0,1fr);grid-template-areas:"head art" "ctl art";column-gap:28px;
+     padding:5vh 20px 8vh;max-width:1320px;margin:0 auto;align-items:start}
+  .head{grid-area:head}.side{grid-area:ctl}.art{grid-area:art}
   .home{display:inline-block;margin-bottom:4vh;color:var(--dim);text-decoration:none;font-size:14px;letter-spacing:.06em}
   h1{font-size:26px;font-weight:400;margin:0 0 .3em}
   .lede{margin:0 0 1.4em}
@@ -35,21 +36,21 @@
   .ctl label span{font:12px 'Courier New',monospace;color:var(--dim)}
   input[type=range]{width:100%;accent-color:var(--thread)}
   .hint{font-size:13px;color:var(--dim);margin-top:.8em}
-  .art{flex:1;min-width:0}
   #canvas-container{width:100%;max-width:1000px;background:#0b0d12;margin:0 auto}
   #canvas-container canvas{display:block;width:100%!important;height:auto!important;cursor:crosshair}
   .loading{color:#8b8292;padding:60px;text-align:center}
   .sig{color:var(--dim);margin-top:2em;font-size:14px}
-  @media (max-width:760px){.wrap{flex-direction:column}.side{width:100%}}
+  @media (max-width:760px){.wrap{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "art" "ctl"}.art{margin-bottom:1em}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="side">
+  <div class="head">
     <a class="home" href="../things.html">← Things</a>
     <h1>Circumfluence</h1>
     <p class="lede">A field of absence. The object is never drawn anywhere: it exists only as the place everything flows around. Click the canvas to shove the fog. The shape comes back, because it doesn't live in the particles.</p>
-
+  </div>
+  <div class="side">
     <h3>Seed</h3>
     <input type="number" id="seed-input" class="seed" value="12345" onchange="updateSeed()">
     <div class="row"><button onclick="previousSeed()">← Prev</button><button onclick="nextSeed()">Next →</button></div>
